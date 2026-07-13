@@ -1,105 +1,95 @@
+# ============================================================
+#  기온과 전력으로 보는 도시 열섬현상
+#  탭1) 열섬 분석 (서울 vs 양평)   탭2) 전력 연결 (기온 vs 전력)
+#  데이터: 기상청 시간별 기온(서울/양평) + 전력거래소 시간별 전국 전력수요 (2025년)
+# ============================================================
 import streamlit as st
 import pandas as pd
 
-# 1. 페이지 설정 및 제목
-st.set_page_config(page_title="도시 열섬현상 및 전력수요 분석", layout="wide")
-st.title("🏙️ 서울-양평 열섬현상 및 기온별 전력수요 분석 대시보드")
-st.markdown("본 웹앱은 2025년 시간별 데이터를 바탕으로 서울과 양평의 기온을 비교하여 도시 열섬현상을 분석하고, 서울 기온과 전력수요의 상관관계를 살펴봅니다.")
+st.set_page_config(page_title="열섬과 전력", layout="wide")
 
-# 2. 데이터 로드 및 전처리 함수
-@st.cache_data
-def load_all_data():
-    # [공통] 한글 파일 처리를 위해 encoding="cp949" 적용
-    seoul = pd.read_csv("서울_기온.csv", encoding="cp949")
-    yangpyeong = pd.read_csv("양평_기온.csv", encoding="cp949")
-    power = pd.read_csv("전력수요.csv", encoding="cp949")
-    
-    # 일시 컬럼을 datetime 형태로 변환
-    seoul['일시'] = pd.to_datetime(seoul['일시'])
-    yangpyeong['일시'] = pd.to_datetime(yangpyeong['일시'])
-    power['일시'] = pd.to_datetime(power['일시'])
-    
-    # 필요한 컬럼 추출 및 이름 구체화
-    seoul = seoul[['일시', '기온(°C)']].rename(columns={'기온(°C)': '서울기온'})
-    yangpyeong = yangpyeong[['일시', '기온(°C)']].rename(columns={'기온(°C)': '양평기온'})
-    power = power[['일시', '전력수요(MWh)']]
-    
-    # 동일 일시 기준으로 세 파일 모두 결합
-    merged = pd.merge(seoul, yangpyeong, on='일시', how='inner')
-    merged = pd.merge(merged, power, on='일시', how='inner')
-    
-    # 파생 변수(기온차, 월, 시각, 기온구간) 생성
-    merged['기온차(서울-양평)'] = merged['서울기온'] - merged['양평기온']
-    merged['월'] = merged['일시'].dt.month
-    merged['시각'] = merged['일시'].dt.hour
-    
-    # ②번 문항을 위한 5도 단위 기온 구간 계산 (예: 23.5도 -> 20도 구간)
-    merged['기온구간'] = (merged['서울기온'] // 5) * 5
-    
-    return merged
+# ---------- 데이터 불러오기 (한글 파일이라 encoding 지정!) ----------
+seoul = pd.read_csv("서울_기온.csv", encoding="cp949")
+yang = pd.read_csv("양평_기온.csv", encoding="cp949")
+power = pd.read_csv("전력수요.csv", encoding="cp949")
 
-try:
-    df = load_all_data()
-    
-    # 탭 구성 (st.tabs)
-    tab1, tab2 = st.tabs(["🌡️ 탭1: 열섬 분석", "⚡ 탭2: 전력 연결"])
-    
-    # --- [탭1: 열섬 분석] ---
-    with tab1:
-        st.header("도시 열섬현상(Urban Heat Island) 분석")
-        st.markdown("서울(대도시)과 양평(근교 농촌)의 기온 차이를 다각도로 분석합니다.")
-        
-        # ① 1년간 두 지역 기온 변화 (선그래프)
-        st.subheader("① 1년간 두 지역 기온 변화")
-        chart_data1 = df.set_index('일시')[['서울기온', '양평기온']]
-        st.line_chart(chart_data1)
-        
-        col1_1, col1_2 = st.columns(2)
-        
-        with col1_1:
-            # ② 시각(0~23시)별 평균 기온차, 서울-양평 (막대그래프)
-            st.subheader("② 시각별 평균 기온차 (서울-양평)")
-            chart_data2 = df.groupby('시각')['기온차(서울-양평)'].mean()
-            st.bar_chart(chart_data2)
-            st.caption("💡 도심 콘크리트의 방열 현상 등으로 인해 대개 밤~새벽 시간대에 두 지역의 기온차가 두드러집니다.")
-            
-        with col1_2:
-            # ③ 월(1~12월)별 평균 기온차, 서울-양평 (막대그래프)
-            st.subheader("③ 월별 평균 기온차 (서울-양평)")
-            chart_data3 = df.groupby('월')['기온차(서울-양평)'].mean()
-            st.bar_chart(chart_data3)
-            st.caption("💡 일사량 변화 및 대기 순환 특성에 따른 월별 열섬 강도의 변동입니다.")
+# ---------- 데이터 정리하기 ----------
+for df in (seoul, yang):
+    df.columns = ["지점", "지점명", "일시", "기온"]
+    df["일시"] = pd.to_datetime(df["일시"])
+power.columns = ["일시", "전력수요"]
+power["일시"] = pd.to_datetime(power["일시"])
 
-    # --- [탭2: 전력 연결] ---
-    with tab2:
-        st.header("서울 기온과 전력수요의 관계 분석")
-        st.markdown("외기 온도 변화가 서울의 전기 소비(냉·난방)에 미치는 요인을 살펴봅니다.")
-        
-        # ① 기온(가로)과 전력수요(세로)의 산점도
-        st.subheader("① 기온과 전력수요의 상관관계 (산점도)")
-        scatter_data = df[['서울기온', '전력수요(MWh)']]
-        # 외부 시각화 툴 없이 streamlit 고유 기능인 scatter_chart 활용
-        st.scatter_chart(scatter_data, x='서울기온', y='전력수요(MWh)')
-        st.caption("💡 추운 겨울(난방)과 더운 여름(냉방) 양쪽 끝단에서 전력수요가 올라가는 형태를 관찰할 수 있습니다.")
-        
-        col2_1, col2_2 = st.columns(2)
-        
-        with col2_1:
-            # ② 기온 구간별 평균 전력수요 (막대그래프)
-            st.subheader("② 기온 구간별 평균 전력수요")
-            df_grouped_temp = df.groupby('기온구간')['전력수요(MWh)'].mean().reset_index()
-            # 그래프 가독성을 위해 구간 범위를 텍스트로 라벨링 ('15~20°C' 등)
-            df_grouped_temp['기온구간명'] = df_grouped_temp['기온구간'].apply(lambda x: f"{int(x)}~{int(x+5)}°C")
-            df_grouped_temp = df_grouped_temp.set_index('기온구간명')['전력수요(MWh)']
-            st.bar_chart(df_grouped_temp)
-            st.caption("💡 기온 구간 변화에 따라 냉난방 전력수요가 증가하기 시작하는 지점을 파악할 수 있습니다.")
-            
-        with col2_2:
-            # ③ 월(1~12월)별 평균 전력수요 (막대그래프)
-            st.subheader("③ 월별 평균 전력수요")
-            chart_data_month_power = df.groupby('월')['전력수요(MWh)'].mean()
-            st.bar_chart(chart_data_month_power)
-            st.caption("💡 냉방 중심의 하절기(7~8월)와 난방 중심의 동절기(12~1월)에 평균 소비량이 크게 기록됩니다.")
+st.title("🌡️⚡ 기온과 전력으로 보는 도시 열섬현상")
+st.write("서울과 양평의 기온을 비교해 **열섬현상**을 찾고, 기온과 전력의 관계로 그 **되먹임**까지 살펴봅니다.")
 
-except Exception as e:
-    st.error(f"⚠️ 데이터를 정상적으로 읽어오지 못했습니다. '서울_기온.csv', '양평_기온.csv', '전력수요.csv' 세 파일이 한 폴더에 있는지 확인해 주세요. (에러 로그: {e})")
+tab1, tab2 = st.tabs(["🌡️ 탭1. 열섬 분석 (서울 vs 양평)", "⚡ 탭2. 전력 연결 (기온 vs 전력)"])
+
+# ============================================================
+#  탭 1 — 열섬 분석
+# ============================================================
+with tab1:
+    heat = pd.merge(
+        seoul[["일시", "기온"]], yang[["일시", "기온"]],
+        on="일시", suffixes=("_서울", "_양평"),
+    ).rename(columns={"기온_서울": "서울", "기온_양평": "양평"})
+    heat["기온차"] = heat["서울"] - heat["양평"]      # 서울 - 양평
+    heat["시각"] = heat["일시"].dt.hour
+    heat["월"] = heat["일시"].dt.month
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("서울 평균기온", f"{heat['서울'].mean():.1f} °C")
+    c2.metric("양평 평균기온", f"{heat['양평'].mean():.1f} °C")
+    c3.metric("평균 기온차 (서울-양평)", f"{heat['기온차'].mean():+.2f} °C")
+
+    st.subheader("① 1년간 두 지역의 기온 변화")
+    st.line_chart(heat.set_index("일시")[["서울", "양평"]])
+    st.caption("여름에 높고 겨울에 낮은 큰 흐름. 서울이 대체로 조금 더 높다.")
+
+    st.subheader("② 시각별 평균 기온차 (서울 − 양평)")
+    hourly = heat.groupby("시각")["기온차"].mean()
+    st.bar_chart(hourly)
+    st.caption("새벽에 차이가 크고 낮에는 작다 → 도시는 '밤에 잘 식지 않는다' (열섬현상!)")
+
+    st.subheader("③ 월별 평균 기온차 (서울 − 양평)")
+    monthly = heat.groupby("월")["기온차"].mean()
+    st.bar_chart(monthly)
+    st.caption("여름(특히 7월)에 기온차가 크다 → 열섬은 여름에 더 심하다.")
+
+# ============================================================
+#  탭 2 — 전력 연결
+# ============================================================
+with tab2:
+    pw = pd.merge(seoul[["일시", "기온"]], power[["일시", "전력수요"]], on="일시")
+    pw["월"] = pw["일시"].dt.month
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("평균 기온", f"{pw['기온'].mean():.1f} °C")
+    c2.metric("평균 전력수요", f"{pw['전력수요'].mean():,.0f} MWh")
+    c3.metric("기온-전력 상관", f"{pw['기온'].corr(pw['전력수요']):.2f}")
+
+    st.subheader("① 기온이 오르면 전력 사용도 늘어날까? (산점도)")
+    st.scatter_chart(pw, x="기온", y="전력수요")
+    st.caption("점 하나가 한 시간. 쾌적할 땐 적게, 덥거나 추우면 많이 쓴다 (U자·나이키 모양).")
+
+    st.subheader("② 기온 구간별 평균 전력수요")
+    pw = pw.copy()
+    pw["기온구간"] = (pw["기온"] // 5 * 5).astype(int)
+    st.bar_chart(pw.groupby("기온구간")["전력수요"].mean())
+    st.caption("가장 쾌적한 기온에서 전력이 가장 적고, 덥거나 추우면 늘어난다 — 냉방과 난방!")
+
+    st.subheader("③ 월별 평균 전력수요")
+    st.bar_chart(pw.groupby("월")["전력수요"].mean())
+    st.caption("여름(냉방)과 겨울(난방)에 봉우리. 열섬이 심한 여름 = 전력을 많이 쓰는 여름!")
+
+    st.subheader("④ 시각별 평균 전력수요")
+    pw["시각"] = pw["일시"].dt.hour
+    st.line_chart(pw.groupby("시각")["전력수요"].mean())
+    st.caption("전국 전력은 낮·저녁에 높고 새벽에 낮다(생활 리듬). "
+               "그런데 열섬(탭1 ②)은 새벽에 심했다 — 왜 다를까? 토론해 보자!")
+
+# ---------- 마무리 질문 ----------
+st.divider()
+st.info("💬 **생각해 보기** — 도시는 밤에 잘 식지 않아 더 덥습니다(열섬). "
+        "더우면 냉방을 켜고, 실외기는 다시 열을 내뿜죠. "
+        "두 탭의 그래프를 근거로 '더위 → 냉방 → 더 큰 더위'의 고리를 설명해 봅시다.")
