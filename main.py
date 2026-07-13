@@ -7,7 +7,7 @@ st.write("노직도 바보임")
 st.write("당신이 고른 지역:", 지역)
 
  
-tab1, tab2, tab3 = st.tabs(["첫 번째 탭", "두 번째 탭", "세 번째 탭"])
+tab1, tab2, tab3 = st.tabs(["one", "two", "three"])
  
 with tab1:
 	st.write("여기는 첫 번째 탭이에요.")
